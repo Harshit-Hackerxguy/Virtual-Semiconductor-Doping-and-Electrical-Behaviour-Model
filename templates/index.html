@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% macro sample_form(sample_key, title, subtitle, state, materials, impurities, required_fields=False) %}
+<article class="form-card">
+    <div class="card-heading">
+        <p class="eyebrow">{{ title }}</p>
+        <h3>{{ subtitle }}</h3>
+    </div>
+
+    <div class="form-grid">
+        <div class="field">
+            <label for="{{ sample_key }}_material">Semiconductor material</label>
+            <select id="{{ sample_key }}_material" name="{{ sample_key }}_material">
+                {% for material in materials %}
+                    <option value="{{ material }}" {% if state[sample_key ~ '_material'] == material %}selected{% endif %}>{{ material }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="field">
+            <label for="{{ sample_key }}_impurity">Common impurity</label>
+            <select id="{{ sample_key }}_impurity" name="{{ sample_key }}_impurity">
+                <option value="">Choose a dopant</option>
+                {% for impurity in impurities %}
+                    <option value="{{ impurity }}" {% if state[sample_key ~ '_impurity'] == impurity %}selected{% endif %}>{{ impurity }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="field">
+            <label for="{{ sample_key }}_custom_impurity">Custom impurity text</label>
+            <input
+                id="{{ sample_key }}_custom_impurity"
+                name="{{ sample_key }}_custom_impurity"
+                type="text"
+                value="{{ state[sample_key ~ '_custom_impurity'] }}"
+                placeholder="Optional: Boron, Phosphorus, Ga, As"
+            >
+        </div>
+
+        <div class="field">
+            <label for="{{ sample_key }}_concentration">Doping concentration (cm^-3)</label>
+            <input
+                id="{{ sample_key }}_concentration"
+                name="{{ sample_key }}_concentration"
+                type="text"
+                value="{{ state[sample_key ~ '_concentration'] }}"
+                placeholder="Examples: 1e15, 1e16, 5e17"
+                {% if required_fields %}required{% endif %}
+            >
+        </div>
+    </div>
+</article>
+{% endmacro %}
+
+{% macro result_panel(sample) %}
+<article class="result-card">
+    <div class="result-header">
+        <div>
+            <p class="eyebrow">{{ sample.label }}</p>
+            <h3>{{ sample.impurity_name }} in {{ sample.material }}</h3>
+            <p class="muted">{{ sample.impurity_type }} impurity -> {{ sample.semiconductor_type }}</p>
+        </div>
+        <div class="badge-row">
+            <span class="badge badge-soft">{{ sample.impurity_type }}</span>
+            <span class="badge badge-strong">{{ sample.breakdown_mechanism }}</span>
+        </div>
+    </div>
+
+    <div class="metric-grid">
+        <div class="metric">
+            <span class="metric-label">Semiconductor type</span>
+            <strong>{{ sample.semiconductor_type }}</strong>
+        </div>
+
+        <div class="metric">
+            <span class="metric-label">Majority carrier</span>
+            <strong>{{ sample.majority_carrier }}</strong>
+        </div>
+
+        <div class="metric">
+            <span class="metric-label">Minority carrier</span>
+            <strong>{{ sample.minority_carrier }}</strong>
+        </div>
+
+        <div class="metric">
+            <span class="metric-label">Concentration</span>
+            <strong>{{ sample.concentration_display }}</strong>
+            <span class="metric-note">{{ sample.doping_band_label }}</span>
+        </div>
+
+        <div class="metric">
+            <span class="metric-label">Conductivity</span>
+            <strong>{{ sample.conductivity_display }}</strong>
+            <span class="metric-note">{{ sample.conductivity_level }}</span>
+        </div>
+
+        <div class="metric">
+            <span class="metric-label">Mobility used</span>
+            <strong>{{ sample.mobility_display }}</strong>
+        </div>
+
+        <div class="metric">
+            <span class="metric-label">High-voltage capability</span>
+            <strong>{{ sample.high_voltage_capability }}</strong>
+        </div>
+
+        <div class="metric">
+            <span class="metric-label">Breakdown-voltage trend</span>
+            <strong>{{ sample.breakdown_trend }}</strong>
+        </div>
+
+        <div class="metric">
+            <span class="metric-label">Likely breakdown mechanism</span>
+            <strong>{{ sample.breakdown_mechanism }}</strong>
+        </div>
+    </div>
+
+    <div class="result-note">
+        <h4>Explanation</h4>
+        <p>{{ sample.explanation }}</p>
+    </div>
+</article>
+{% endmacro %}
+
+{% block content %}
+<div class="page-shell">
+    <header class="hero">
+        <div class="hero-copy">
+            <p class="hero-kicker">Educational semiconductor simulator</p>
+            <h1>Virtual Semiconductor Doping and Electrical Behaviour Model</h1>
+            <p class="hero-text">
+                Explore how donor and acceptor impurities affect semiconductor type,
+                carrier behavior, conductivity, and breakdown trend in a simplified educational model.
+            </p>
+            <div class="hero-pills">
+                <span>Flask</span>
+                <span>Responsive</span>
+                <span>Comparison mode</span>
+            </div>
+        </div>
+
+        <aside class="hero-panel">
+            <h2>Model scope</h2>
+            <ul>
+                <li>Classifies donor and acceptor impurities</li>
+                <li>Determines p-type or n-type behavior</li>
+                <li>Calculates simplified conductivity</li>
+                <li>Estimates educational breakdown trend</li>
+            </ul>
+        </aside>
+    </header>
+
+    <main class="content-stack">
+        <section class="panel">
+            <div class="section-heading">
+                <p class="eyebrow">Simulation input</p>
+                <h2>Enter one sample or compare two samples</h2>
+                <p>This is an educational approximation, not a lab-grade device simulator.</p>
+            </div>
+
+            {% if errors %}
+                <div class="alert-box">
+                    <h3>Please fix these input issues:</h3>
+                    <ul>
+                        {% for error in errors %}
+                            <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+
+            <form method="post" class="simulator-form">
+                <div class="mode-bar">
+                    <label class="toggle">
+                        <input type="checkbox" id="compare_mode" name="compare_mode" {% if compare_mode %}checked{% endif %}>
+                        <span class="toggle-track"></span>
+                        <span class="toggle-label">Enable comparison mode</span>
+                    </label>
+                    <p class="mode-help">Turn this on to compare Sample A and Sample B side by side.</p>
+                </div>
+
+                <div class="form-layout">
+                    {{ sample_form('sample_a', 'Primary sample', 'Sample A', form_state, materials, impurities, True) }}
+
+                    <div class="comparison-panel {% if not compare_mode %}is-hidden{% endif %}" data-compare-panel>
+                        {{ sample_form('sample_b', 'Comparison sample', 'Sample B', form_state, materials, impurities, compare_mode) }}
+                    </div>
+                </div>
+
+                <div class="action-row">
+                    <button type="submit" class="primary-button">Run simulation</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="panel">
+            <div class="section-heading">
+                <p class="eyebrow">Results</p>
+                <h2>Estimated electrical behavior</h2>
+            </div>
+
+            {% if sample_a or sample_b %}
+                <div class="results-grid {% if sample_b %}results-grid-double{% endif %}">
+                    {% if sample_a %}
+                        {{ result_panel(sample_a) }}
+                    {% endif %}
+                    {% if sample_b %}
+                        {{ result_panel(sample_b) }}
+                    {% endif %}
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <h3>Ready to simulate</h3>
+                    <p>Enter the inputs above and run the model.</p>
+                </div>
+            {% endif %}
+        </section>
+
+        {% if comparison %}
+        <section class="panel">
+            <div class="section-heading">
+                <p class="eyebrow">Comparison</p>
+                <h2>Sample A vs Sample B</h2>
+            </div>
+
+            <div class="comparison-grid">
+                <article class="comparison-card">
+                    <span class="comparison-label">Higher conductivity</span>
+                    <h3>{{ comparison.higher_conductivity.winner }}</h3>
+                    <p>{{ comparison.higher_conductivity.reason }}</p>
+                </article>
+
+                <article class="comparison-card">
+                    <span class="comparison-label">Better high-voltage handling</span>
+                    <h3>{{ comparison.better_voltage_handling.winner }}</h3>
+                    <p>{{ comparison.better_voltage_handling.reason }}</p>
+                </article>
+
+                <article class="comparison-card">
+                    <span class="comparison-label">Lower breakdown-voltage trend</span>
+                    <h3>{{ comparison.lower_breakdown_voltage.winner }}</h3>
+                    <p>{{ comparison.lower_breakdown_voltage.reason }}</p>
+                </article>
+
+                <article class="comparison-card">
+                    <span class="comparison-label">Best for conduction-focused use</span>
+                    <h3>{{ comparison.conduction_choice }}</h3>
+                    <p>Higher conductivity generally makes this sample more suitable for conduction-focused learning cases.</p>
+                </article>
+
+                <article class="comparison-card">
+                    <span class="comparison-label">Best for high-voltage blocking</span>
+                    <h3>{{ comparison.blocking_choice }}</h3>
+                    <p>Higher voltage capability generally makes this sample more suitable for blocking applications.</p>
+                </article>
+
+                <article class="comparison-card comparison-card-wide">
+                    <span class="comparison-label">Summary</span>
+                    <p>{{ comparison.summary }}</p>
+                </article>
+            </div>
+        </section>
+        {% endif %}
+
+        <section class="panel">
+            <div class="section-heading">
+                <p class="eyebrow">Educational note</p>
+                <h2>Conductivity vs breakdown trade-off</h2>
+            </div>
+
+            <div class="note-grid">
+                <article class="note-card">
+                    <h3>Higher doping</h3>
+                    <p>Higher doping usually increases conductivity, narrows depletion width, lowers breakdown voltage trend, and makes Zener behavior more likely.</p>
+                </article>
+
+                <article class="note-card">
+                    <h3>Lower doping</h3>
+                    <p>Lower doping usually decreases conductivity, widens depletion width, raises breakdown voltage trend, and makes Avalanche behavior more likely.</p>
+                </article>
+
+                <article class="note-card">
+                    <h3>Honest scope</h3>
+                    <p>This model gives educational trends and categories, not exact semiconductor device ratings.</p>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>Built as a beginner-friendly Flask simulator for semiconductor education.</p>
+    </footer>
+</div>
+{% endblock %}
