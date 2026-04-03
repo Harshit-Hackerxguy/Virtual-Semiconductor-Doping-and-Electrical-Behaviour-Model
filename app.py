@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request
+from flask import Flask, jsonify, request, send_from_directory
 
 from simulator import (
     COMMON_IMPURITIES,
@@ -9,21 +9,14 @@ from simulator import (
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FRONTEND_DIST_DIR = os.path.join(BASE_DIR, "frontend", "dist")
+FRONTEND_ASSETS_DIR = os.path.join(FRONTEND_DIST_DIR, "assets")
 
 app = Flask(
     __name__,
-    template_folder=os.path.join(BASE_DIR, "templates"),
-    static_folder=os.path.join(BASE_DIR, "static"),
+    static_folder=FRONTEND_ASSETS_DIR,
+    static_url_path="/assets",
 )
-
-
-def get_sample_input(form_data, prefix):
-    return {
-        "material": form_data.get(f"{prefix}_material", "Silicon"),
-        "selected_impurity": form_data.get(f"{prefix}_impurity", ""),
-        "custom_impurity": form_data.get(f"{prefix}_custom_impurity", ""),
-        "concentration": form_data.get(f"{prefix}_concentration", ""),
-    }
 
 
 def get_form_state(form_data):
@@ -39,43 +32,103 @@ def get_form_state(form_data):
     }
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/")
 def index():
-    compare_mode = False
+    if os.path.exists(os.path.join(FRONTEND_DIST_DIR, "index.html")):
+        return send_from_directory(FRONTEND_DIST_DIR, "index.html")
+
+    return (
+        jsonify(
+            {
+                "message": "React frontend build not found.",
+                "next_steps": [
+                    "cd frontend",
+                    "npm install",
+                    "npm run build",
+                    "python app.py",
+                ],
+            }
+        ),
+        503,
+    )
+
+
+@app.route("/<path:path>")
+def spa_fallback(path):
+    file_path = os.path.join(FRONTEND_DIST_DIR, path)
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        return send_from_directory(FRONTEND_DIST_DIR, path)
+
+    if os.path.exists(os.path.join(FRONTEND_DIST_DIR, "index.html")):
+        return send_from_directory(FRONTEND_DIST_DIR, "index.html")
+
+    return jsonify({"error": "Frontend build missing."}), 404
+
+
+@app.get("/api/options")
+def api_options():
+    return jsonify(
+        {
+            "materials": MATERIAL_OPTIONS,
+            "impurities": COMMON_IMPURITIES,
+            "defaults": get_form_state({}),
+        }
+    )
+
+
+@app.post("/api/simulate")
+def api_simulate():
+    payload = request.get_json(silent=True) or {}
+    compare_mode = bool(payload.get("compare_mode", False))
+
+    raw_sample_a = payload.get("sample_a") or {}
+    raw_sample_b = payload.get("sample_b") or {}
+
     errors = []
     sample_a = None
     sample_b = None
     comparison = None
-    form_state = get_form_state({})
 
-    if request.method == "POST":
-        compare_mode = request.form.get("compare_mode") == "on"
-        form_state = get_form_state(request.form)
+    try:
+        sample_a = build_sample_result(
+            {
+                "material": raw_sample_a.get("material", "Silicon"),
+                "selected_impurity": raw_sample_a.get("selected_impurity", ""),
+                "custom_impurity": raw_sample_a.get("custom_impurity", ""),
+                "concentration": raw_sample_a.get("concentration", ""),
+            },
+            "Sample A",
+        )
+    except ValueError as error:
+        errors.append(f"Sample A: {error}")
 
+    if compare_mode:
         try:
-            sample_a = build_sample_result(get_sample_input(request.form, "sample_a"), "Sample A")
+            sample_b = build_sample_result(
+                {
+                    "material": raw_sample_b.get("material", "Silicon"),
+                    "selected_impurity": raw_sample_b.get("selected_impurity", ""),
+                    "custom_impurity": raw_sample_b.get("custom_impurity", ""),
+                    "concentration": raw_sample_b.get("concentration", ""),
+                },
+                "Sample B",
+            )
         except ValueError as error:
-            errors.append(f"Sample A: {error}")
+            errors.append(f"Sample B: {error}")
 
-        if compare_mode:
-            try:
-                sample_b = build_sample_result(get_sample_input(request.form, "sample_b"), "Sample B")
-            except ValueError as error:
-                errors.append(f"Sample B: {error}")
+    if errors:
+        return jsonify({"errors": errors}), 400
 
-        if compare_mode and sample_a and sample_b and not errors:
-            comparison = compare_samples(sample_a, sample_b)
+    if compare_mode and sample_a and sample_b:
+        comparison = compare_samples(sample_a, sample_b)
 
-    return render_template(
-        "index.html",
-        materials=MATERIAL_OPTIONS,
-        impurities=COMMON_IMPURITIES,
-        form_state=form_state,
-        compare_mode=compare_mode,
-        errors=errors,
-        sample_a=sample_a,
-        sample_b=sample_b,
-        comparison=comparison,
+    return jsonify(
+        {
+            "sample_a": sample_a,
+            "sample_b": sample_b,
+            "comparison": comparison,
+            "compare_mode": compare_mode,
+        }
     )
 
 
