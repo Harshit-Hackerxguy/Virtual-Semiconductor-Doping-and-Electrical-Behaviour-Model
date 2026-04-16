@@ -13,11 +13,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_DIST_DIR = os.path.join(BASE_DIR, "frontend", "dist")
 FRONTEND_ASSETS_DIR = os.path.join(FRONTEND_DIST_DIR, "assets")
 
-app = Flask(
-    __name__,
-    static_folder=FRONTEND_ASSETS_DIR,
-    static_url_path="/assets",
-)
+app = Flask(__main__)
 
 CORS(app)
 
@@ -135,4 +131,4 @@ def api_simulate():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
