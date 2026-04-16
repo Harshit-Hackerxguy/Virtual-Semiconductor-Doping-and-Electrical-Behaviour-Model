@@ -1,5 +1,5 @@
 import os
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, CORS
 
 from simulator import (
     COMMON_IMPURITIES,
@@ -18,6 +18,7 @@ app = Flask(
     static_url_path="/assets",
 )
 
+CORS(app)
 
 def get_form_state(form_data):
     return {
