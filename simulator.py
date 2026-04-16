@@ -1,22 +1,28 @@
 from math import isfinite
 
-ELECTRONIC_CHARGE = 1.6e-19
+ELECTRONIC_CHARGE = 1.602e-19
 
 MATERIALS = {
     "Silicon": {
         "mobility_electron": 1350.0,
         "mobility_hole": 480.0,
-        "charge": ELECTRONIC_CHARGE,
-        "note": "This educational estimate uses simplified room-temperature silicon constants.",
+        "intrinsic_carrier": 1.0e10,
+        "critical_field": 3.0e5,
+        "note": "Room-temperature estimate using common textbook silicon parameters.",
     },
     "Germanium": {
-        "mobility_electron": 1350.0,
-        "mobility_hole": 480.0,
-        "charge": ELECTRONIC_CHARGE,
-        "note": (
-            "Germanium is accepted as an input, but this version still uses the same simplified "
-            "silicon constants for a transparent educational model."
-        ),
+        "mobility_electron": 3900.0,
+        "mobility_hole": 1900.0,
+        "intrinsic_carrier": 2.4e13,
+        "critical_field": 1.0e5,
+        "note": "Room-temperature estimate using common textbook germanium parameters.",
+    },
+    "Gallium Arsenide": {
+        "mobility_electron": 8500.0,
+        "mobility_hole": 400.0,
+        "intrinsic_carrier": 2.0e6,
+        "critical_field": 4.0e5,
+        "note": "Room-temperature estimate using common textbook GaAs parameters.",
     },
 }
 
@@ -53,7 +59,7 @@ COMMON_IMPURITIES = [
     "Indium",
 ]
 
-LEVEL_SCORES = {"Low": 1, "Moderate": 2, "Medium": 2, "High": 3}
+QUALITY_SCORE = {"Low": 1, "Moderate": 2, "High": 3}
 
 
 def normalize_text(value):
@@ -99,22 +105,8 @@ def classify_impurity(impurity_name):
 
     supported = ", ".join(COMMON_IMPURITIES)
     raise ValueError(
-        f"'{impurity_name}' is not supported in this educational model. Try one of: {supported}."
+        f"'{impurity_name}' is not supported in this simulator. Try one of: {supported}."
     )
-
-
-def determine_semiconductor_type(impurity_family):
-    if impurity_family == "donor":
-        return "n-type"
-    if impurity_family == "acceptor":
-        return "p-type"
-    raise ValueError("Impurity family must be donor or acceptor.")
-
-
-def determine_carriers(semiconductor_type):
-    if semiconductor_type == "n-type":
-        return "Electrons", "Holes"
-    return "Holes", "Electrons"
 
 
 def parse_doping_concentration(raw_value):
@@ -136,141 +128,243 @@ def parse_doping_concentration(raw_value):
     if concentration <= 0:
         raise ValueError("Doping concentration must be greater than zero.")
 
+    if concentration < 1e12 or concentration > 1e20:
+        raise ValueError("Use a practical range between 1e12 and 1e20 cm^-3.")
+
     return concentration
 
 
-def calculate_conductivity(material_name, semiconductor_type, concentration):
-    material = MATERIALS[material_name]
+def determine_semiconductor_type(impurity_family):
+    return "n-type" if impurity_family == "donor" else "p-type"
 
+
+def determine_carriers(semiconductor_type):
     if semiconductor_type == "n-type":
-        mobility = material["mobility_electron"]
-    else:
-        mobility = material["mobility_hole"]
+        return "Electrons", "Holes"
+    return "Holes", "Electrons"
 
-    conductivity = material["charge"] * concentration * mobility
-    return conductivity, mobility
+
+def carrier_concentrations(semiconductor_type, doping, intrinsic_carrier):
+    # Uses a first-order complete ionization estimate at room temperature.
+    if semiconductor_type == "n-type":
+        majority = doping
+        minority = (intrinsic_carrier**2) / majority
+    else:
+        majority = doping
+        minority = (intrinsic_carrier**2) / majority
+    return majority, minority
+
+
+def conductivity_and_resistivity(material, semiconductor_type, majority, minority):
+    if semiconductor_type == "n-type":
+        n0, p0 = majority, minority
+    else:
+        p0, n0 = majority, minority
+
+    conductivity = ELECTRONIC_CHARGE * (
+        n0 * material["mobility_electron"] + p0 * material["mobility_hole"]
+    )
+    resistivity = 1.0 / conductivity
+    return conductivity, resistivity
+
+
+def mobility_used(material, semiconductor_type):
+    if semiconductor_type == "n-type":
+        return material["mobility_electron"]
+    return material["mobility_hole"]
+
+
+def estimate_breakdown(material, doping):
+    # Empirical one-sided junction style estimate at 300 K for educational trends.
+    base = 60.0 * (doping / 1.0e16) ** (-0.75)
+    breakdown_voltage = max(5.0, min(base, 1500.0))
+
+    critical_field = material["critical_field"]
+    depletion_width_cm = max(1e-6, (2.0 * breakdown_voltage) / critical_field)
+    depletion_width_um = depletion_width_cm * 1e4
+
+    if doping >= 2e18:
+        mechanism = "Zener"
+    elif doping <= 5e16:
+        mechanism = "Avalanche"
+    else:
+        mechanism = "Mixed"
+
+    if breakdown_voltage >= 250:
+        hv_label = "High"
+    elif breakdown_voltage >= 80:
+        hv_label = "Moderate"
+    else:
+        hv_label = "Low"
+
+    return {
+        "breakdown_voltage": breakdown_voltage,
+        "depletion_width_um": depletion_width_um,
+        "high_voltage_capability": hv_label,
+        "breakdown_mechanism": mechanism,
+    }
 
 
 def interpret_conductivity(conductivity):
-    if conductivity < 0.05:
+    if conductivity < 0.1:
         return "Low"
-    if conductivity < 1:
+    if conductivity < 10:
         return "Moderate"
     return "High"
 
 
-def estimate_breakdown_behavior(concentration):
-    if concentration >= 5e17:
-        return {
-            "doping_band": "Very high doping",
-            "depletion_width": "Narrow",
-            "high_voltage_capability": "Low",
-            "breakdown_trend": "Low",
-            "breakdown_mechanism": "Zener",
-        }
+def format_density(value):
+    return f"{value:.2e} cm^-3"
 
-    if concentration >= 1e15:
-        return {
-            "doping_band": "Moderate doping",
-            "depletion_width": "Moderate",
-            "high_voltage_capability": "Moderate",
-            "breakdown_trend": "Medium",
-            "breakdown_mechanism": "Transitional",
-        }
+
+def format_conductivity(value):
+    if value >= 100:
+        return f"{value:,.2f} S/cm"
+    if value >= 1:
+        return f"{value:,.3f} S/cm"
+    return f"{value:.3e} S/cm"
+
+
+def format_resistivity(value):
+    if value >= 100:
+        return f"{value:,.2f} ohm.cm"
+    if value >= 1:
+        return f"{value:,.3f} ohm.cm"
+    return f"{value:.3e} ohm.cm"
+
+
+def format_voltage(value):
+    return f"{value:,.2f} V"
+
+
+def format_width(value):
+    if value >= 100:
+        return f"{value:,.1f} um"
+    return f"{value:,.2f} um"
+
+
+def format_mobility(value):
+    return f"{value:,.0f} cm^2/V.s"
+
+
+def build_graphics_data(sample, material):
+    # Assume a 1 um effective conduction length for simple current-density plotting.
+    effective_length_cm = 1.0e-4
+    carrier_term = sample["conductivity"] / ELECTRONIC_CHARGE
+
+    iv_curve = []
+    for step in range(0, 26):
+        voltage = step * 0.2
+        electric_field = voltage / effective_length_cm
+        current_density = sample["conductivity"] * electric_field
+        iv_curve.append(
+            {
+                "voltage": round(voltage, 3),
+                "electric_field": round(electric_field, 3),
+                "current_density": round(current_density, 6),
+            }
+        )
+
+    sweep_points = [1e14, 3e14, 1e15, 3e15, 1e16, 3e16, 1e17, 3e17, 1e18, 3e18, 1e19]
+    breakdown_sweep = []
+    for doping in sweep_points:
+        breakdown = estimate_breakdown(material, doping)
+        breakdown_sweep.append(
+            {
+                "doping": doping,
+                "breakdown_voltage": round(breakdown["breakdown_voltage"], 4),
+                "depletion_width_um": round(breakdown["depletion_width_um"], 6),
+            }
+        )
+
+    carrier_distribution = [
+        {
+            "type": "Majority",
+            "density": sample["majority_density"],
+        },
+        {
+            "type": "Minority",
+            "density": sample["minority_density"],
+        },
+        {
+            "type": "Intrinsic",
+            "density": material["intrinsic_carrier"],
+        },
+    ]
 
     return {
-        "doping_band": "Low doping",
-        "depletion_width": "Wide",
-        "high_voltage_capability": "High",
-        "breakdown_trend": "High",
-        "breakdown_mechanism": "Avalanche",
+        "iv_curve": iv_curve,
+        "breakdown_sweep": breakdown_sweep,
+        "carrier_distribution": carrier_distribution,
+        "carrier_transport_term": carrier_term,
     }
 
 
-def format_concentration(concentration):
-    return f"{concentration:.2e} cm^-3"
-
-
-def format_conductivity(conductivity):
-    if conductivity >= 100:
-        return f"{conductivity:,.2f} S/cm"
-    if conductivity >= 1:
-        return f"{conductivity:,.3f} S/cm"
-    if conductivity >= 0.01:
-        return f"{conductivity:,.4f} S/cm"
-    return f"{conductivity:.3e} S/cm"
-
-
-def format_mobility(mobility):
-    return f"{mobility:,.0f} cm^2/V.s"
-
-
 def build_explanation(sample):
-    if sample["semiconductor_type"] == "n-type":
-        mobility_sentence = (
-            "Since electrons are the majority carriers and electron mobility is higher in this model, "
-            "conductivity is usually stronger than an equally doped p-type sample."
-        )
-    else:
-        mobility_sentence = (
-            "Since holes are the majority carriers and hole mobility is lower in this model, "
-            "conductivity is usually lower than an equally doped n-type sample."
-        )
-
-    explanation = (
-        f"This impurity creates a {sample['semiconductor_type']} semiconductor. "
-        f"{sample['majority_carrier']} are the majority carriers and {sample['minority_carrier'].lower()} "
-        f"are the minority carriers. The estimated conductivity is {sample['conductivity_display']}, "
-        f"which is categorized as {sample['conductivity_level'].lower()}. "
-        f"{mobility_sentence} "
-        f"Because the doping level is in the {sample['doping_band_label'].lower()} range, the model predicts "
-        f"{sample['high_voltage_capability'].lower()} high-voltage capability, a "
-        f"{sample['breakdown_trend'].lower()} breakdown-voltage trend, and "
-        f"{sample['breakdown_mechanism']} breakdown tendency."
+    return (
+        f"{sample['impurity_name']} acts as a {sample['impurity_type'].lower()} impurity in "
+        f"{sample['material']}, creating a {sample['semiconductor_type']} sample. "
+        f"The first-order model estimates majority carrier density {sample['majority_density_display']} "
+        f"and minority carrier density {sample['minority_density_display']}. "
+        f"From mobility and charge transport, conductivity is {sample['conductivity_display']} "
+        f"and resistivity is {sample['resistivity_display']}. "
+        f"Estimated breakdown voltage is {sample['breakdown_voltage_display']} with "
+        f"{sample['breakdown_mechanism']} tendency. {sample['material_note']}"
     )
-
-    if sample["material"] != "Silicon":
-        explanation += f" {sample['material_note']}"
-
-    return explanation
 
 
 def build_sample_result(sample_input, label):
     material_name = resolve_material(sample_input.get("material", "Silicon"))
+    material = MATERIALS[material_name]
+
     impurity_name = resolve_impurity_name(sample_input)
     impurity_data = classify_impurity(impurity_name)
-    semiconductor_type = determine_semiconductor_type(impurity_data["impurity_family"])
+
     concentration = parse_doping_concentration(sample_input.get("concentration", ""))
+    semiconductor_type = determine_semiconductor_type(impurity_data["impurity_family"])
     majority_carrier, minority_carrier = determine_carriers(semiconductor_type)
-    conductivity, mobility = calculate_conductivity(material_name, semiconductor_type, concentration)
+    majority, minority = carrier_concentrations(
+        semiconductor_type, concentration, material["intrinsic_carrier"]
+    )
+
+    conductivity, resistivity = conductivity_and_resistivity(
+        material, semiconductor_type, majority, minority
+    )
     conductivity_level = interpret_conductivity(conductivity)
-    breakdown = estimate_breakdown_behavior(concentration)
+    mobility = mobility_used(material, semiconductor_type)
+    breakdown = estimate_breakdown(material, concentration)
 
     sample = {
         "label": label,
         "material": material_name,
-        "material_note": MATERIALS[material_name]["note"],
+        "material_note": material["note"],
         "impurity_name": impurity_data["name"],
         "impurity_type": impurity_data["impurity_type"],
         "semiconductor_type": semiconductor_type,
         "majority_carrier": majority_carrier,
         "minority_carrier": minority_carrier,
         "concentration": concentration,
-        "concentration_display": format_concentration(concentration),
+        "majority_density": majority,
+        "majority_density_display": format_density(majority),
+        "minority_density": minority,
+        "minority_density_display": format_density(minority),
         "conductivity": conductivity,
         "conductivity_display": format_conductivity(conductivity),
         "conductivity_level": conductivity_level,
+        "resistivity": resistivity,
+        "resistivity_display": format_resistivity(resistivity),
         "mobility": mobility,
         "mobility_display": format_mobility(mobility),
-        "doping_band_label": breakdown["doping_band"],
-        "depletion_width": breakdown["depletion_width"],
+        "breakdown_voltage": breakdown["breakdown_voltage"],
+        "breakdown_voltage_display": format_voltage(breakdown["breakdown_voltage"]),
+        "depletion_width_um": breakdown["depletion_width_um"],
+        "depletion_width_display": format_width(breakdown["depletion_width_um"]),
         "high_voltage_capability": breakdown["high_voltage_capability"],
-        "high_voltage_score": LEVEL_SCORES[breakdown["high_voltage_capability"]],
-        "breakdown_trend": breakdown["breakdown_trend"],
-        "breakdown_score": LEVEL_SCORES[breakdown["breakdown_trend"]],
+        "high_voltage_score": QUALITY_SCORE[breakdown["high_voltage_capability"]],
         "breakdown_mechanism": breakdown["breakdown_mechanism"],
     }
 
+    sample["graphics"] = build_graphics_data(sample, material)
     sample["explanation"] = build_explanation(sample)
     return sample
 
@@ -286,62 +380,39 @@ def compare_numeric_values(value_a, value_b, higher_is_better=True):
     return "Sample A" if value_a < value_b else "Sample B"
 
 
-def compare_voltage_capability(sample_a, sample_b):
-    if sample_a["high_voltage_score"] != sample_b["high_voltage_score"]:
-        return (
-            "Sample A"
-            if sample_a["high_voltage_score"] > sample_b["high_voltage_score"]
-            else "Sample B"
-        )
-
-    return compare_numeric_values(
-        sample_a["concentration"], sample_b["concentration"], higher_is_better=False
-    )
-
-
-def compare_lower_breakdown(sample_a, sample_b):
-    if sample_a["breakdown_score"] != sample_b["breakdown_score"]:
-        return (
-            "Sample A"
-            if sample_a["breakdown_score"] < sample_b["breakdown_score"]
-            else "Sample B"
-        )
-
-    return compare_numeric_values(
-        sample_a["concentration"], sample_b["concentration"], higher_is_better=True
-    )
-
-
 def compare_samples(sample_a, sample_b):
     conductivity_winner = compare_numeric_values(
         sample_a["conductivity"], sample_b["conductivity"], higher_is_better=True
     )
-    voltage_winner = compare_voltage_capability(sample_a, sample_b)
-    breakdown_winner = compare_lower_breakdown(sample_a, sample_b)
+    voltage_winner = compare_numeric_values(
+        sample_a["breakdown_voltage"], sample_b["breakdown_voltage"], higher_is_better=True
+    )
+    leakage_winner = compare_numeric_values(
+        sample_a["resistivity"], sample_b["resistivity"], higher_is_better=True
+    )
 
     if conductivity_winner == "Tie":
         conductivity_reason = "Both samples have nearly the same estimated conductivity."
     else:
         conductivity_reason = (
-            f"{conductivity_winner} has the higher estimated conductivity based on carrier mobility "
-            f"and doping concentration."
+            f"{conductivity_winner} has higher conductivity based on concentration and carrier mobility."
         )
 
     if voltage_winner == "Tie":
-        voltage_reason = "Both samples fall in nearly the same high-voltage capability band."
+        voltage_reason = "Both samples have a similar breakdown-voltage estimate."
     else:
         voltage_reason = (
-            f"{voltage_winner} should handle higher voltage better because it is more lightly doped."
+            f"{voltage_winner} has the higher estimated breakdown voltage, useful for blocking applications."
         )
 
-    if breakdown_winner == "Tie":
-        breakdown_reason = "Both samples have a very similar estimated breakdown-voltage trend."
+    if leakage_winner == "Tie":
+        leakage_reason = "Both samples have similar resistivity so leakage tendency is close."
     else:
-        breakdown_reason = (
-            f"{breakdown_winner} is expected to have the lower breakdown-voltage trend because it is more heavily doped."
+        leakage_reason = (
+            f"{leakage_winner} has higher resistivity, which generally corresponds to lower leakage tendency."
         )
 
-    summary = f"{conductivity_reason} {voltage_reason} {breakdown_reason}"
+    summary = f"{conductivity_reason} {voltage_reason} {leakage_reason}"
 
     return {
         "higher_conductivity": {
@@ -352,11 +423,9 @@ def compare_samples(sample_a, sample_b):
             "winner": voltage_winner,
             "reason": voltage_reason,
         },
-        "lower_breakdown_voltage": {
-            "winner": breakdown_winner,
-            "reason": breakdown_reason,
+        "lower_leakage_tendency": {
+            "winner": leakage_winner,
+            "reason": leakage_reason,
         },
-        "conduction_choice": conductivity_winner,
-        "blocking_choice": voltage_winner,
         "summary": summary,
     }
