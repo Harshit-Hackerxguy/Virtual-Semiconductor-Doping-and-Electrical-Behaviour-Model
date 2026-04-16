@@ -1,5 +1,5 @@
 import os
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 from simulator import (
@@ -10,10 +10,8 @@ from simulator import (
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FRONTEND_DIST_DIR = os.path.join(BASE_DIR, "frontend", "dist")
-FRONTEND_ASSETS_DIR = os.path.join(FRONTEND_DIST_DIR, "assets")
 
-app = Flask(__main__)
+app = Flask(__name__)
 
 CORS(app)
 
@@ -29,40 +27,10 @@ def get_form_state(form_data):
         "sample_b_concentration": form_data.get("sample_b_concentration", ""),
     }
 
-
 @app.route("/")
-def index():
-    if os.path.exists(os.path.join(FRONTEND_DIST_DIR, "index.html")):
-        return send_from_directory(FRONTEND_DIST_DIR, "index.html")
-
-    return (
-        jsonify(
-            {
-                "message": "React frontend build not found.",
-                "next_steps": [
-                    "cd frontend",
-                    "npm install",
-                    "npm run build",
-                    "python app.py",
-                ],
-            }
-        ),
-        503,
-    )
-
-
-@app.route("/<path:path>")
-def spa_fallback(path):
-    file_path = os.path.join(FRONTEND_DIST_DIR, path)
-    if os.path.exists(file_path) and os.path.isfile(file_path):
-        return send_from_directory(FRONTEND_DIST_DIR, path)
-
-    if os.path.exists(os.path.join(FRONTEND_DIST_DIR, "index.html")):
-        return send_from_directory(FRONTEND_DIST_DIR, "index.html")
-
-    return jsonify({"error": "Frontend build missing."}), 404
-
-
+def home():
+    return "backend is running!"
+    
 @app.get("/api/options")
 def api_options():
     return jsonify(
