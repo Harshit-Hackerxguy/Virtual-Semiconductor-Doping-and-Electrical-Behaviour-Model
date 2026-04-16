@@ -752,7 +752,7 @@ export default function App() {
 
   useEffect(() => {
     async function loadOptions() {
-      const response = await fetch("/api/options");
+      const response = await fetch("https://virtual-semiconductor-doping-and.onrender.com/api/options");
       const data = await response.json();
       setMaterials(data.materials || ["Silicon"]);
       setImpurities(data.impurities || []);
@@ -767,7 +767,7 @@ export default function App() {
     setErrors([]);
 
     try {
-      const response = await fetch("/api/simulate", {
+      const response = await fetch("https://virtual-semiconductor-doping-and.onrender.com/api/simulate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ compare_mode: compareMode, sample_a: sampleA, sample_b: sampleB }),
