@@ -648,13 +648,13 @@ function VisualizationSection({ sampleA, sampleB }) {
   const carrierData = [
     {
       name: "Majority",
-      sampleA: toFiniteNumber(sampleA?.majority_density),
-      sampleB: sampleB ? toFiniteNumber(sampleB?.majority_density) : null,
+      sampleA: Math.log10(Math.max(1, toFiniteNumber(sampleA?.majority_density))),
+      sampleB: sampleB ? Math.log10(Math.max(1, toFiniteNumber(sampleB?.majority_density))) : null,
     },
     {
       name: "Minority",
-      sampleA: toFiniteNumber(sampleA?.minority_density),
-      sampleB: sampleB ? toFiniteNumber(sampleB?.minority_density) : null,
+      sampleA: Math.log10(Math.max(1, toFiniteNumber(sampleA?.minority_density))),
+      sampleB: sampleB ? Math.log10(Math.max(1, toFiniteNumber(sampleB?.minority_density))) : null,
     },
   ];
 
@@ -707,30 +707,30 @@ function VisualizationSection({ sampleA, sampleB }) {
           <h3 style={{ marginTop: 0 }}>Breakdown Voltage vs Doping Sweep</h3>
           <div style={{ width: "100%", height: 320 }}>
             <ResponsiveContainer>
-              <LineChart data={breakdownSweep}>
+              <LineChart data={breakdownSweep} margin={{ top: 10, right: 18, left: 8, bottom: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(90, 140, 170, 0.2)" />
-                <XAxis dataKey="doping" stroke="#9ebed3" tickFormatter={(value) => Number(value).toExponential(0)} />
+                <XAxis dataKey="doping" type="number" scale="log" domain={['dataMin', 'dataMax']} ticks={[1e14, 1e15, 1e16, 1e17, 1e18, 1e19]} stroke="#9ebed3" tickFormatter={(value) => Number(value).toExponential(0)} />
                 <YAxis stroke="#9ebed3" />
-                <Tooltip contentStyle={tooltipStyle} formatter={(value) => Number(value).toFixed(3)} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(value) => Number(value).toFixed(3)} labelFormatter={(label) => `Doping: ${Number(label).toExponential(1)} cm\u207B\u00B3`} />
                 <Legend />
-                <Line type="monotone" dataKey="breakdown_voltage" stroke="#14a97d" strokeWidth={2} name="Breakdown Voltage (V)" dot={false} />
+                <Line type="monotone" dataKey="breakdown_voltage" stroke="#14a97d" strokeWidth={2} name="Breakdown Voltage (V)" dot={{ r: 3, fill: "#14a97d" }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         <div style={cardStyle} className="chart-wrap">
-          <h3 style={{ marginTop: 0 }}>Carrier Concentration Comparison</h3>
+          <h3 style={{ marginTop: 0 }}>Carrier Concentration (Log₁₀ Scale)</h3>
           <div style={{ width: "100%", height: 320 }}>
             <ResponsiveContainer>
               <BarChart data={carrierData} barCategoryGap="22%" barGap={8}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(90, 140, 170, 0.2)" />
                 <XAxis dataKey="name" stroke="#9ebed3" />
-                <YAxis stroke="#9ebed3" tickFormatter={(value) => formatScientific(value, 1)} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(value) => formatScientific(value, 2)} />
+                <YAxis stroke="#9ebed3" tickFormatter={(value) => `10^${Math.round(value)}`} domain={[0, 'dataMax']} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(value) => `${formatScientific(Math.pow(10, value), 2)} cm\u207B\u00B3`} />
                 <Legend />
-                <Bar dataKey="sampleA" fill="#2377d8" name="Sample A Density (cm^-3)" />
-                {sampleB ? <Bar dataKey="sampleB" fill="#df6a20" name="Sample B Density (cm^-3)" /> : null}
+                <Bar dataKey="sampleA" fill="#2377d8" name="Sample A log\u2081\u2080(Density)" radius={[4, 4, 0, 0]} />
+                {sampleB ? <Bar dataKey="sampleB" fill="#df6a20" name="Sample B log\u2081\u2080(Density)" radius={[4, 4, 0, 0]} /> : null}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -752,7 +752,7 @@ export default function App() {
 
   useEffect(() => {
     async function loadOptions() {
-      const response = await fetch("https://virtual-semiconductor-doping-and.onrender.com/api/options");
+      const response = await fetch("http://localhost:5000/api/options");
       const data = await response.json();
       setMaterials(data.materials || ["Silicon"]);
       setImpurities(data.impurities || []);
@@ -767,7 +767,7 @@ export default function App() {
     setErrors([]);
 
     try {
-      const response = await fetch("https://virtual-semiconductor-doping-and.onrender.com/api/simulate", {
+      const response = await fetch("http://localhost:5000/api/simulate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ compare_mode: compareMode, sample_a: sampleA, sample_b: sampleB }),
