@@ -752,7 +752,7 @@ export default function App() {
 
   useEffect(() => {
     async function loadOptions() {
-      const response = await fetch("http://localhost:5000/api/options");
+      const response = await fetch("https://virtual-semiconductor-doping-and.onrender.com/api/options");
       const data = await response.json();
       setMaterials(data.materials || ["Silicon"]);
       setImpurities(data.impurities || []);
@@ -767,7 +767,7 @@ export default function App() {
     setErrors([]);
 
     try {
-      const response = await fetch("http://localhost:5000/api/simulate", {
+      const response = await fetch("https://virtual-semiconductor-doping-and.onrender.com/api/simulate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ compare_mode: compareMode, sample_a: sampleA, sample_b: sampleB }),
@@ -799,7 +799,7 @@ export default function App() {
       <div style={shellStyle}>
         <header style={navStyle}>
           <div style={navInnerStyle}>
-            <strong style={{ fontSize: "1.08rem", color: "#e4f2fd" }}>Atomica Semiconductor Studio</strong>
+            <strong style={{ fontSize: "1.08rem", color: "#e4f2fd" }}>Atomic Semiconductor Studio</strong>
             <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
               <a href="#simulator" style={{ textDecoration: "none", color: "#8fbad7", fontWeight: 600 }}>
                 Simulator
