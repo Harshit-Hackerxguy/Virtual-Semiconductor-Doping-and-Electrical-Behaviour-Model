@@ -1,6 +1,6 @@
 # Virtual Semiconductor Doping and Electrical Behaviour Model
 
-This project now uses:
+This project uses:
 
 - Flask backend for simulation APIs
 - React (Vite) frontend for UI and graphics
